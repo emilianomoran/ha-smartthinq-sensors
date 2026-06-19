@@ -2,10 +2,64 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
+from datetime import datetime, time
+
 from ..const import BIT_OFF, RangeFeatures, StateOptions, TemperatureUnit
 from ..core_async import ClientAsync
 from ..device import Device, DeviceStatus
 from ..device_info import DeviceInfo
+
+CMD_TIMEHOUR = "settingOvenClockTimeHour"
+CMD_TIMEMIN = "settingOvenClockTimeMinute"
+CMD_TIMESEC = "settingOvenClockTimeSecond"
+CMD_TIMEAMPM = "settingOvenClockTimeAMPM"
+CMD_TIMEYEAR = "settingOvenClockTimeYear"
+CMD_TIMEMONTH = "settingOvenClockTimeMonth"
+CMD_TIMEDAY = "settingOvenClockTimeDay"
+CMD_HOURMODE = "settingHourMode"
+CMD_AUTOTIMESYNC = "settingAutoTimeSync"
+
+CMD_SET_PREFERENCE = "SetPreference"
+
+KEY_DATASET = "dataSetList"
+KEY_OVENSTATE = "ovenState"
+
+CMD_PREF_DICT = {
+    "command": "Set",
+    "ctrlKey": CMD_SET_PREFERENCE,
+    KEY_DATASET: {
+        KEY_OVENSTATE: {
+            "cmdOptionContentsType": "",
+            "cmdOptionDataLength": "",
+            CMD_TIMEHOUR: "",
+            CMD_TIMEMIN: "",
+            CMD_HOURMODE: "",
+            "settingConvAutoConversion": "",
+            "settingAdjustUnit": "",
+            "settingAdjustUpperTempValue": "",
+            "settingAdjustLowerTempValue": "",
+            "settingPreheatAlarm": "",
+            "settingBeepVolume": "",
+            "settingOvenTempUnit": "",
+            "settingLanguage": "",
+            "settingCooktopAlarmCooktopTimerMIN": "",
+            "settingCooktopBeepVolume": "",
+            "settingAutoRemoteSet": "",
+            "settingInstaViewSet": "",
+            CMD_TIMEAMPM: "",
+            CMD_TIMEYEAR: "",
+            CMD_TIMEMONTH: "",
+            CMD_TIMEDAY: "",
+            CMD_TIMESEC: "",
+            CMD_AUTOTIMESYNC: "",
+        }
+    },
+}
+
+RANGE_CMD = {
+    CMD_SET_PREFERENCE: CMD_PREF_DICT,
+}
 
 OVEN_TEMP_UNIT = {
     "0": TemperatureUnit.FAHRENHEIT,
@@ -26,6 +80,50 @@ class RangeDevice(Device):
     def reset_status(self):
         self._status = RangeStatus(self)
         return self._status
+
+    def _prepare_command(self, ctrl_key, command, key, value):
+        """Prepare command for range device."""
+        if self._should_poll:
+            raise ValueError("Control not supported for this device")
+
+        if (cmd_key := RANGE_CMD.get(ctrl_key)) is None:
+            return None
+
+        cmd = deepcopy(cmd_key)
+        def_cmd = cmd[KEY_DATASET].get(KEY_OVENSTATE, {})
+        cmd[KEY_DATASET][KEY_OVENSTATE] = {**def_cmd, **command}
+        return cmd
+
+    async def set_time(self, time_wanted: time | None = None):
+        """Set time on range."""
+        if time_wanted is None:
+            now = datetime.now()
+            time_wanted = now.time()
+        else:
+            now = datetime.now()
+
+        hour = time_wanted.hour
+        ampm = "AM" if hour < 12 else "PM"
+        display_hour = hour % 12
+        if display_hour == 0:
+            display_hour = 12
+
+        cmd = {
+            CMD_TIMEHOUR: display_hour,
+            CMD_TIMEMIN: time_wanted.minute,
+            CMD_TIMESEC: time_wanted.second,
+            CMD_TIMEAMPM: ampm,
+            CMD_TIMEYEAR: now.year,
+            CMD_TIMEMONTH: now.month,
+            CMD_TIMEDAY: now.day,
+        }
+        await self.set_val(CMD_SET_PREFERENCE, cmd)
+
+    async def set_val(self, ctrl_key, command, key=None, value=None):
+        """Set a device's control for range and update status."""
+        await self.set(ctrl_key, command)
+        if self._status and key is not None:
+            self._status.update_status(key, value)
 
     async def poll(self) -> RangeStatus | None:
         """Poll the device's current state."""

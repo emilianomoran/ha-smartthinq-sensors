@@ -69,6 +69,7 @@ WM_COMPLEX_DEVICES = {DeviceType.TOWER_WASHERDRYER: ["washer", "dryer"]}
 
 SET_TIME_DEVICE_TYPES = [
     DeviceType.MICROWAVE,
+    DeviceType.RANGE,
 ]
 
 
